@@ -52,6 +52,44 @@ class productController {
 
         })
     }
+
+    
+
+    delete_product = async (req, res) => {
+        const { productId } = req.params;
+
+        try {
+            // find product first
+            const product = await productModel.findById(productId);
+
+            if (!product) {
+                return responseReturn(res, 404, { error: 'Product not found' });
+            }
+
+            // cloudinary config
+            cloudinary.config({
+                cloud_name: process.env.cloud_name,
+                api_key: process.env.api_key,
+                api_secret: process.env.api_secret,
+                secure: true
+            });
+
+            // delete images from cloudinary
+            for (let img of product.images) {
+                const publicId = img.split('/').pop().split('.')[0];
+                await cloudinary.uploader.destroy(`products/${publicId}`);
+            }
+
+            // delete product from DB
+            await productModel.findByIdAndDelete(productId);
+
+            responseReturn(res, 200, { message: 'Product deleted successfully' });
+
+        } catch (error) {
+            responseReturn(res, 500, { error: error.message });
+        }
+    }
+
     products_get = async (req, res) => {
         const { page, searchValue, parPage } = req.query
         const { id } = req;

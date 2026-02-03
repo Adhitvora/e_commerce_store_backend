@@ -23,7 +23,7 @@ app.use(cors({
 
 const io = socket(server, {
     cors: {
-        origin: mode === 'production' ? ['http://localhost:3000' , process.env.user_panel_production_url, process.env.admin_panel_production_url] : ['http://localhost:3000', 'http://localhost:3001'],
+        origin: mode === 'production' ? ['http://localhost:3000', process.env.user_panel_production_url, process.env.admin_panel_production_url] : ['http://localhost:3000', 'http://localhost:3001'],
         credentials: true
     }
 })
@@ -159,7 +159,10 @@ app.use('/api', require('./routes/authRoutes'))
 app.use('/api', require('./routes/home/customerAuthRoutes'))
 app.use('/api', require('./routes/dashboard/sellerRoutes'))
 app.use('/api', require('./routes/dashboard/categoryRoutes'))
-app.use('/api', require('./routes/dashboard/productRoutes'))
+app.use('/api', require('./routes/dashboard/productRoutes'));
+
+
+
 app.get('/', (req, res) => res.send('Hello World!'))
 
 const port = process.env.PORT
