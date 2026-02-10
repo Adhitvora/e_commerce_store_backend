@@ -42,7 +42,8 @@ class productController {
                     price: parseInt(price),
                     discount: parseInt(discount),
                     images: allImageUrl,
-                    brand: brand.trim()
+                    brand: brand.trim(),
+                    approval_status: 'pending'
 
                 })
                 responseReturn(res, 201, { message: "product add success" })
@@ -53,7 +54,7 @@ class productController {
         })
     }
 
-    
+
 
     delete_product = async (req, res) => {
         const { productId } = req.params;
@@ -181,6 +182,76 @@ class productController {
             }
         })
     }
+
+
+    approve_product = async (req, res) => {
+        const { productId } = req.params;
+        const { id } = req;
+
+        try {
+            const product = await productModel.findByIdAndUpdate(
+                productId,
+                {
+                    approval_status: 'approved',
+                    approvedBy: id,
+                    approvedAt: new Date()
+                },
+                { new: true }
+            );
+
+            responseReturn(res, 200, { message: 'Product approved', product });
+        } catch (error) {
+            responseReturn(res, 500, { error: error.message });
+        }
+    }
+
+    reject_product = async (req, res) => {
+        const { productId } = req.params;
+        const { id } = req;
+
+        try {
+            const product = await productModel.findByIdAndUpdate(
+                productId,
+                {
+                    approval_status: 'rejected',
+                    approvedBy: id,
+                    approvedAt: new Date()
+                },
+                { new: true }
+            );
+
+            responseReturn(res, 200, { message: 'Product rejected', product });
+        } catch (error) {
+            responseReturn(res, 500, { error: error.message });
+        }
+    }
+
+    admin_products_get = async (req, res) => {
+        const { page, searchValue, parPage } = req.query;
+        const skipPage = parseInt(parPage) * (parseInt(page) - 1);
+
+        try {
+            let query = {};
+
+            if (searchValue) {
+                query.$text = { $search: searchValue };
+            }
+
+            const products = await productModel
+                .find(query)
+                .populate('sellerId', 'name email') // 👈 seller fields
+                .skip(skipPage)
+                .limit(parseInt(parPage))
+                .sort({ createdAt: -1 });
+
+
+            const totalProduct = await productModel.find(query).countDocuments();
+
+            responseReturn(res, 200, { totalProduct, products });
+        } catch (error) {
+            responseReturn(res, 500, { error: error.message });
+        }
+    };
 }
 
 module.exports = new productController()

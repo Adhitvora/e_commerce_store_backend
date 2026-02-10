@@ -3,6 +3,7 @@ const { Schema, model } = require('mongoose')
 const productSchema = new Schema({
     sellerId: {
         type: Schema.ObjectId,
+        ref: 'sellers',
         required: true
     },
     name: {
@@ -41,6 +42,19 @@ const productSchema = new Schema({
     shopName: {
         type: String,
         required: true
+    },
+    approval_status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending'
+    },
+    approvedBy: {
+        type: Schema.ObjectId,
+        default: null
+    },
+    approvedAt: {
+        type: Date,
+        default: null
     },
     images: {
         type: Array,

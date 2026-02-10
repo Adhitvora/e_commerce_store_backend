@@ -11,10 +11,26 @@ router.delete(
     authMiddleware,
     productController.delete_product
 );
-
 router.get('/test-delete', (req, res) => {
     res.send('route working');
 });
+router.put(
+    '/product/approve/:productId',
+    authMiddleware,
+    productController.approve_product
+)
+
+router.put(
+    '/product/reject/:productId',
+    authMiddleware,
+    productController.reject_product
+)
+
+router.get(
+    '/admin/products-get',
+    authMiddleware,
+    productController.admin_products_get
+);
 
 
 module.exports = router
