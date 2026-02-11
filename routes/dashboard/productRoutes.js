@@ -31,6 +31,12 @@ router.get(
     authMiddleware,
     productController.admin_products_get
 );
+router.get(
+    '/admin/product-details/:productId',
+    authMiddleware,
+    productController.product_full_details
+);
+
 
 
 module.exports = router

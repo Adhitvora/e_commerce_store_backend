@@ -1,6 +1,7 @@
 const formidable = require('formidable')
 const cloudinary = require('cloudinary').v2
 const productModel = require('../../models/productModel');
+const sellerModel = require('../../models/sellerModel')
 const { responseReturn } = require('../../utiles/response');
 class productController {
 
@@ -234,24 +235,63 @@ class productController {
             let query = {};
 
             if (searchValue) {
-                query.$text = { $search: searchValue };
+
+                const sellers = await sellerModel.find({
+                    name: { $regex: searchValue, $options: "i" }
+                }).select('_id');
+
+                const sellerIds = sellers.map(s => s._id);
+
+                query.$or = [
+                    { name: { $regex: searchValue, $options: "i" } },
+                    { category: { $regex: searchValue, $options: "i" } },
+                    { brand: { $regex: searchValue, $options: "i" } },
+                    { description: { $regex: searchValue, $options: "i" } },
+                    { sellerId: { $in: sellerIds } } // 🔥 seller search
+                ];
             }
 
             const products = await productModel
                 .find(query)
-                .populate('sellerId', 'name email') // 👈 seller fields
+                .populate('sellerId', 'name email')
                 .skip(skipPage)
                 .limit(parseInt(parPage))
                 .sort({ createdAt: -1 });
 
-
-            const totalProduct = await productModel.find(query).countDocuments();
+            const totalProduct = await productModel.countDocuments(query);
 
             responseReturn(res, 200, { totalProduct, products });
+
         } catch (error) {
             responseReturn(res, 500, { error: error.message });
         }
     };
+
+    product_full_details = async (req, res) => {
+        const { productId } = req.params;
+
+        try {
+            const product = await productModel.findById(productId)
+                .populate({
+                    path: 'sellerId',
+                    select: 'name email status payment method image shopInfo createdAt'
+                })
+                .populate({
+                    path: 'approvedBy',
+                    select: 'name email'
+                });
+
+            if (!product) {
+                return responseReturn(res, 404, { error: 'Product not found' });
+            }
+
+            responseReturn(res, 200, { product });
+
+        } catch (error) {
+            responseReturn(res, 500, { error: error.message });
+        }
+    };
+
 }
 
 module.exports = new productController()

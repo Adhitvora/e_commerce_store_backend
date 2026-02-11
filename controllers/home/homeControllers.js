@@ -44,18 +44,18 @@ class homeControllers {
 
     get_products = async (req, res) => {
         try {
-            const products = await productModel.find({}).limit(16).sort({
+            const products = await productModel.find({ approval_status: 'approved' }).limit(16).sort({
                 createdAt: -1
             })
-            const allProduct1 = await productModel.find({}).limit(9).sort({
+            const allProduct1 = await productModel.find({ approval_status: 'approved' }).limit(9).sort({
                 createdAt: -1
             })
             const latest_product = this.formateProduct(allProduct1);
-            const allProduct2 = await productModel.find({}).limit(9).sort({
+            const allProduct2 = await productModel.find({ approval_status: 'approved' }).limit(9).sort({
                 rating: -1
             })
             const topRated_product = this.formateProduct(allProduct2);
-            const allProduct3 = await productModel.find({}).limit(9).sort({
+            const allProduct3 = await productModel.find({ approval_status: 'approved' }).limit(9).sort({
                 discount: -1
             })
             const discount_product = this.formateProduct(allProduct3);
@@ -77,33 +77,36 @@ class homeControllers {
         } = req.params
         try {
             const product = await productModel.findOne({
+                approval_status: 'approved',
                 slug
             })
             const relatedProducts = await productModel.find({
+                approval_status: 'approved',
                 $and: [{
-                        _id: {
-                            $ne: product.id
-                        }
-                    },
-                    {
-                        category: {
-                            $eq: product.category
-                        }
+                    _id: {
+                        $ne: product.id
                     }
+                },
+                {
+                    category: {
+                        $eq: product.category
+                    }
+                }
                 ]
             }).limit(20)
             const moreProducts = await productModel.find({
+                approval_status: 'approved',
 
                 $and: [{
-                        _id: {
-                            $ne: product.id
-                        }
-                    },
-                    {
-                        sellerId: {
-                            $eq: product.sellerId
-                        }
+                    _id: {
+                        $ne: product.id
                     }
+                },
+                {
+                    sellerId: {
+                        $eq: product.sellerId
+                    }
+                }
                 ]
             }).limit(3)
             responseReturn(res, 200, {
@@ -122,11 +125,11 @@ class homeControllers {
                 low: 0,
                 high: 0
             }
-            const products = await productModel.find({}).limit(9).sort({
+            const products = await productModel.find({ approval_status: 'approved' }).limit(9).sort({
                 createdAt: -1
             })
             const latest_product = this.formateProduct(products);
-            const getForPrice = await productModel.find({}).sort({
+            const getForPrice = await productModel.find({ approval_status: 'approved' }).sort({
                 'price': 1
             })
             if (getForPrice.length > 0) {
@@ -146,7 +149,7 @@ class homeControllers {
         const parPage = 12
         req.query.parPage = parPage
         try {
-            const products = await productModel.find({}).sort({
+            const products = await productModel.find({ approval_status: 'approved' }).sort({
                 createdAt: -1
             })
             const totalProduct = new queryProducts(products, req.query).categoryQuery().searchQuery().priceQuery().ratingQuery().sortByPrice().countProducts();
@@ -218,49 +221,49 @@ class homeControllers {
         const skipPage = limit * (pageNo - 1)
         try {
             let getRating = await reviewModel.aggregate([{
-                    $match: {
-                        productId: {
-                            $eq: new ObjectId(productId)
-                        },
-                        rating: {
-                            $not: {
-                                $size: 0
-                            }
-                        }
-                    }
-                },
-                {
-                    $unwind: "$rating"
-                },
-                {
-                    $group: {
-                        _id: "$rating",
-                        count: {
-                            $sum: 1
+                $match: {
+                    productId: {
+                        $eq: new ObjectId(productId)
+                    },
+                    rating: {
+                        $not: {
+                            $size: 0
                         }
                     }
                 }
+            },
+            {
+                $unwind: "$rating"
+            },
+            {
+                $group: {
+                    _id: "$rating",
+                    count: {
+                        $sum: 1
+                    }
+                }
+            }
             ])
             let rating_review = [{
-                    rating: 5,
-                    sum: 0
-                },
-                {
-                    rating: 4,
-                    sum: 0
-                },
-                {
-                    rating: 3,
-                    sum: 0
-                },
-                {
-                    rating: 2,
-                    sum: 0
-                },
-                {
-                    rating: 1,
-                    sum: 0
-                }
+                rating: 5,
+                sum: 0
+            },
+            {
+                rating: 4,
+                sum: 0
+            },
+            {
+                rating: 3,
+                sum: 0
+            },
+            {
+                rating: 2,
+                sum: 0
+            },
+            {
+                rating: 1,
+                sum: 0
+            }
             ]
             for (let i = 0; i < rating_review.length; i++) {
                 for (let j = 0; j < getRating.length; j++) {
