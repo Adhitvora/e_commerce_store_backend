@@ -7,6 +7,9 @@ router.post('/home/order/palce-order', orderController.place_order)
 router.get('/home/customer/gat-dashboard-data/:userId', orderController.get_customer_databorad_data)
 router.get('/home/customer/gat-orders/:customerId/:status', orderController.get_orders)
 router.get('/home/customer/gat-order/:orderId', orderController.get_order)
+router.post('/order/create-payment', orderController.create_payment)
+router.post('/order/verify-payment', orderController.verify_online_payment)
+router.put('/order/cod-confirm/:orderId', orderController.cod_confirm)
 router.get(
     '/order/get-order/:orderId',
     authMiddleware,

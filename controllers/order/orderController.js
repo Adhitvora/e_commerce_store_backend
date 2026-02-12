@@ -194,6 +194,158 @@ class orderController {
         }
     }
 
+    update_order_payment_status = async (orderId, paymentStatus, razorpayPaymentId = null) => {
+        const customerUpdate = {
+            payment_status: paymentStatus
+        }
+
+        if (razorpayPaymentId) {
+            customerUpdate.razorpay_payment_id = razorpayPaymentId
+        }
+
+        await customerOrder.findByIdAndUpdate(orderId, customerUpdate)
+        await authOrderModel.updateMany(
+            { orderId: new ObjectId(orderId) },
+            { payment_status: paymentStatus }
+        )
+    }
+
+    create_payment = async (req, res) => {
+        try {
+
+            const { orderId } = req.body
+
+            if (!orderId || !ObjectId.isValid(orderId)) {
+                return responseReturn(res, 400, { message: 'Valid orderId required' })
+            }
+
+            const order = await customerOrder.findById(orderId)
+
+            if (!order) {
+                return responseReturn(res, 404, { message: 'Order not found' })
+            }
+
+            if (order.payment_type !== 'online') {
+                return responseReturn(res, 400, { message: 'Only online orders are payable here' })
+            }
+
+            if (order.payment_status === 'paid') {
+                return responseReturn(res, 200, { message: 'Order already paid', orderId: order._id })
+            }
+
+            const razorpayOrder = await razorpay.orders.create({
+                amount: Math.round(order.price * 100),
+                currency: 'INR',
+                receipt: order._id.toString(),
+                notes: { orderId: order._id.toString() }
+            })
+
+            await customerOrder.findByIdAndUpdate(order._id, {
+                razorpay_order_id: razorpayOrder.id,
+                payment_status: 'pending',
+                razorpay_payment_id: null
+            })
+
+            return responseReturn(res, 200, {
+                orderId: order._id,
+                razorpayOrder
+            })
+
+        } catch (error) {
+            console.log('create_payment error:', error)
+            return responseReturn(res, 500, { message: 'Unable to create payment order' })
+        }
+    }
+
+    verify_online_payment = async (req, res) => {
+        try {
+
+            const {
+                orderId,
+                razorpay_order_id,
+                razorpay_payment_id,
+                razorpay_signature
+            } = req.body
+
+            if (
+                !orderId ||
+                !ObjectId.isValid(orderId) ||
+                !razorpay_order_id ||
+                !razorpay_payment_id ||
+                !razorpay_signature
+            ) {
+                return responseReturn(res, 400, { message: 'Incomplete payment data' })
+            }
+
+            const keySecret = process.env.razorpay_key_secret
+
+            if (!keySecret) {
+                return responseReturn(res, 500, { message: 'Razorpay key secret missing' })
+            }
+
+            const generatedSignature = crypto
+                .createHmac('sha256', keySecret)
+                .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+                .digest('hex')
+
+            if (generatedSignature !== razorpay_signature) {
+                return responseReturn(res, 400, { message: 'Invalid Razorpay signature' })
+            }
+
+            const order = await customerOrder.findById(orderId)
+
+            if (!order) {
+                return responseReturn(res, 404, { message: 'Order not found' })
+            }
+
+            if (order.payment_type !== 'online') {
+                return responseReturn(res, 400, { message: 'This order is not online payment type' })
+            }
+
+            if (order.razorpay_order_id !== razorpay_order_id) {
+                return responseReturn(res, 400, { message: 'Razorpay order mismatch' })
+            }
+
+            if (order.payment_status === 'paid') {
+                return responseReturn(res, 200, { message: 'Payment already verified' })
+            }
+
+            await this.update_order_payment_status(orderId, 'paid', razorpay_payment_id)
+
+            return responseReturn(res, 200, { message: 'Payment verified', orderId })
+
+        } catch (error) {
+            console.log('verify_online_payment error:', error)
+            return responseReturn(res, 500, { message: 'Payment verification failed' })
+        }
+    }
+
+    cod_confirm = async (req, res) => {
+        try {
+            const { orderId } = req.params
+
+            if (!orderId || !ObjectId.isValid(orderId)) {
+                return responseReturn(res, 400, { message: 'Valid orderId required' })
+            }
+
+            const order = await customerOrder.findById(orderId)
+
+            if (!order) {
+                return responseReturn(res, 404, { message: 'Order not found' })
+            }
+
+            if (order.payment_type !== 'cod') {
+                return responseReturn(res, 400, { message: 'This order is not COD type' })
+            }
+
+            await this.update_order_payment_status(orderId, 'cod')
+            return responseReturn(res, 200, { message: 'COD confirmed' })
+        } catch (error) {
+            console.log('cod_confirm error:', error)
+            return responseReturn(res, 500, { message: 'Unable to confirm COD' })
+        }
+    }
+
     /* ================================================= */
     /* VERIFY RAZORPAY WEBHOOK                          */
     /* ================================================= */
@@ -253,14 +405,10 @@ class orderController {
                     return res.status(200).json({ message: "Already processed" })
                 }
 
-                await customerOrder.findByIdAndUpdate(existingOrder._id, {
-                    payment_status: "paid",
-                    razorpay_payment_id: payment.id
-                })
-
-                await authOrderModel.updateMany(
-                    { orderId: existingOrder._id },
-                    { payment_status: "paid" }
+                await this.update_order_payment_status(
+                    existingOrder._id.toString(),
+                    "paid",
+                    payment.id
                 )
 
                 return res.status(200).json({ message: "Payment verified" })
@@ -282,13 +430,9 @@ class orderController {
                 }
 
                 if (existingOrder) {
-                    await customerOrder.findByIdAndUpdate(existingOrder._id, {
-                        payment_status: "failed"
-                    })
-
-                    await authOrderModel.updateMany(
-                        { orderId: existingOrder._id },
-                        { payment_status: "failed" }
+                    await this.update_order_payment_status(
+                        existingOrder._id.toString(),
+                        "failed"
                     )
                 }
 
