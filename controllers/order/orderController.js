@@ -225,10 +225,6 @@ class orderController {
                 return responseReturn(res, 404, { message: 'Order not found' })
             }
 
-            if (order.payment_type !== 'online') {
-                return responseReturn(res, 400, { message: 'Only online orders are payable here' })
-            }
-
             if (order.payment_status === 'paid') {
                 return responseReturn(res, 200, { message: 'Order already paid', orderId: order._id })
             }
@@ -242,7 +238,6 @@ class orderController {
 
             await customerOrder.findByIdAndUpdate(order._id, {
                 razorpay_order_id: razorpayOrder.id,
-                payment_status: 'pending',
                 razorpay_payment_id: null
             })
 
@@ -298,8 +293,8 @@ class orderController {
                 return responseReturn(res, 404, { message: 'Order not found' })
             }
 
-            if (order.payment_type !== 'online') {
-                return responseReturn(res, 400, { message: 'This order is not online payment type' })
+            if (order.payment_type !== 'online' && order.payment_type !== 'cod') {
+                return responseReturn(res, 400, { message: 'This order payment type is not supported' })
             }
 
             if (order.razorpay_order_id !== razorpay_order_id) {
