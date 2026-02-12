@@ -17,7 +17,7 @@ router.get(
 router.get('/order/confirm/:orderId', orderController.order_confirm)
 router.post('/home/order/place-order', authMiddleware, orderController.place_order)
 router.put('/order/confirm/:orderId', authMiddleware, orderController.order_confirm)
-router.post('/api/order/webhook', orderController.order_confirm)
+router.post('/order/webhook', orderController.order_confirm)
 
 
 // --- admin

@@ -202,16 +202,29 @@ class orderController {
         try {
 
             const secret = process.env.razorpay_webhook_secret
-            const crypto = require("crypto")
+            const rawBody = req.rawBody
+            const signatureHeader = req.headers["x-razorpay-signature"]
+
+            if (!secret || !rawBody || !signatureHeader) {
+                return res.status(400).json({ message: "Webhook data missing" })
+            }
+
+            const razorpaySignature = Array.isArray(signatureHeader)
+                ? signatureHeader[0]
+                : signatureHeader
 
             const generatedSignature = crypto
                 .createHmac("sha256", secret)
-                .update(req.rawBody)
+                .update(rawBody)
                 .digest("hex")
 
-            const razorpaySignature = req.headers["x-razorpay-signature"]
+            const generatedBuffer = Buffer.from(generatedSignature, 'utf8')
+            const receivedBuffer = Buffer.from(razorpaySignature, 'utf8')
 
-            if (generatedSignature !== razorpaySignature) {
+            if (
+                generatedBuffer.length !== receivedBuffer.length ||
+                !crypto.timingSafeEqual(generatedBuffer, receivedBuffer)
+            ) {
                 return res.status(400).json({ message: "Invalid signature" })
             }
 
@@ -220,13 +233,17 @@ class orderController {
             if (event === "payment.captured") {
 
                 const payment = req.body.payload.payment.entity
-                const orderId = payment.notes?.orderId
+                let existingOrder = null
 
-                if (!orderId) {
-                    return res.status(400).json({ message: "OrderId missing" })
+                if (payment.notes?.orderId) {
+                    existingOrder = await customerOrder.findById(payment.notes.orderId)
                 }
 
-                const existingOrder = await customerOrder.findById(orderId)
+                if (!existingOrder && payment.order_id) {
+                    existingOrder = await customerOrder.findOne({
+                        razorpay_order_id: payment.order_id
+                    })
+                }
 
                 if (!existingOrder) {
                     return res.status(404).json({ message: "Order not found" })
@@ -236,13 +253,13 @@ class orderController {
                     return res.status(200).json({ message: "Already processed" })
                 }
 
-                await customerOrder.findByIdAndUpdate(orderId, {
+                await customerOrder.findByIdAndUpdate(existingOrder._id, {
                     payment_status: "paid",
                     razorpay_payment_id: payment.id
                 })
 
                 await authOrderModel.updateMany(
-                    { orderId: new ObjectId(orderId) },
+                    { orderId: existingOrder._id },
                     { payment_status: "paid" }
                 )
 
@@ -252,15 +269,25 @@ class orderController {
             if (event === "payment.failed") {
 
                 const payment = req.body.payload.payment.entity
-                const orderId = payment.notes?.orderId
+                let existingOrder = null
 
-                if (orderId) {
-                    await customerOrder.findByIdAndUpdate(orderId, {
+                if (payment.notes?.orderId) {
+                    existingOrder = await customerOrder.findById(payment.notes.orderId)
+                }
+
+                if (!existingOrder && payment.order_id) {
+                    existingOrder = await customerOrder.findOne({
+                        razorpay_order_id: payment.order_id
+                    })
+                }
+
+                if (existingOrder) {
+                    await customerOrder.findByIdAndUpdate(existingOrder._id, {
                         payment_status: "failed"
                     })
 
                     await authOrderModel.updateMany(
-                        { orderId: new ObjectId(orderId) },
+                        { orderId: existingOrder._id },
                         { payment_status: "failed" }
                     )
                 }

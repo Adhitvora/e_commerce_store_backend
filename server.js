@@ -6,7 +6,6 @@ const {
 const app = express()
 const cors = require('cors')
 const http = require('http')
-const bodyParser = require('body-parser')
 const cookieParser = require('cookie-parser')
 require('dotenv').config()
 
@@ -141,13 +140,14 @@ io.on('connection', (soc) => {
     })
 })
 
-app.use(bodyParser.json())
 app.use(cookieParser())
 
 app.use(
     express.json({
         verify: function (req, res, buf) {
-            req.rawBody = buf
+            if (req.originalUrl.startsWith('/api/order/webhook')) {
+                req.rawBody = buf.toString()
+            }
         }
     })
 )
