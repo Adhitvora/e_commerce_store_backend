@@ -1,194 +1,208 @@
-const striptModel = require('../../models/stripeModel')
+const paymentAccountModel = require('../../models/paymentAccountModel')
 const sellerModel = require('../../models/sellerModel')
 const sellerWallet = require('../../models/sellerWallet')
-const myShopWallet = require('../../models/myShopWallet')
 const withdrowRequest = require('../../models/withdrowRequest')
 const { responseReturn } = require('../../utiles/response')
 const { mongo: { ObjectId } } = require('mongoose')
-const { v4: uuidv4 } = require('uuid')
-const stripe = require('stripe')(process.env.stripe_key)
-const mode = process.env.mode
+
+const Razorpay = require('razorpay')
+
+const razorpay = new Razorpay({
+    key_id: process.env.razorpay_key_id,
+    key_secret: process.env.razorpay_key_secret
+})
+
 class paymentController {
 
-    create_stripe_connect_account = async (req, res) => {
-        
-        const { id } = req
-        const uid = uuidv4()
+    /* ------------------------------------------------ */
+    /* CREATE RAZORPAY ROUTE ACCOUNT */
+    /* ------------------------------------------------ */
+    create_razorpay_account = async (req, res) => {
 
-       
+        const { id } = req
 
         try {
-            const stripInfo = await striptModel.findOne({ sellerId: id })
 
-            if (stripInfo) {
+            const seller = await sellerModel.findById(id)
 
-                await striptModel.deleteOne({ sellerId: id })
-                const account = await stripe.accounts.create({ type: 'express' })
-
-                const accountLink = await stripe.accountLinks.create({
-                    account: account.id,
-                    refresh_url: mode === 'production' ? `${process.env.admin_panel_production_url}/refresh` : `${process.env.admin_panel_lcoal_url}/refresh`,
-                    return_url: mode === 'production' ? `${process.env.admin_panel_production_url}/success?activeCode=${uid}` : `${process.env.admin_panel_lcoal_url}/success?activeCode=${uid}`,
-                    type: 'account_onboarding'
-                })
-                await striptModel.create({
-                    sellerId: id,
-                    stripeId: account.id,
-                    code: uid
-                })
-                responseReturn(res, 201, { url: accountLink.url })
-
-            } else {
-                const account = await stripe.accounts.create({ type: 'express' })
-
-                const accountLink = await stripe.accountLinks.create({
-                    account: account.id,
-                    refresh_url: mode === 'production' ? `${process.env.admin_panel_production_url}/refresh` : `${process.env.admin_panel_lcoal_url}/refresh`,
-                    return_url: mode === 'production' ? `${process.env.admin_panel_production_url}/success?activeCode=${uid}` : `${process.env.admin_panel_lcoal_url}/success?activeCode=${uid}`,
-                    type: 'account_onboarding'
-                })
-                await striptModel.create({
-                    sellerId: id,
-                    stripeId: account.id,
-                    code: uid
-                })
-                responseReturn(res, 201, { url: accountLink.url })
+            if (!seller) {
+                return responseReturn(res, 404, { message: 'Seller not found' })
             }
+
+            const account = await razorpay.accounts.create({
+                email: seller.email,
+                phone: seller.phone || "9999999999",
+                type: "route",
+                legal_business_name: seller.shopInfo?.shopName || seller.name,
+                business_type: "individual",
+                contact_name: seller.name,
+                profile: { category: "ecommerce" }
+            })
+
+            await paymentAccountModel.findOneAndUpdate(
+                { sellerId: id },
+                { razorpayAccountId: account.id },
+                { upsert: true }
+            )
+
+            responseReturn(res, 200, {
+                message: "Razorpay account created",
+                accountId: account.id
+            })
+
         } catch (error) {
-            console.log('stripe connect account create error ' + error.message)
+            console.log(error)
+            responseReturn(res, 500, { message: 'Account creation failed' })
         }
     }
 
-    active_stripe_connect_account = async (req, res) => {
-        const { activeCode } = req.params
+    /* ------------------------------------------------ */
+    /* ACTIVATE SELLER PAYMENT */
+    /* ------------------------------------------------ */
+    activate_payment_account = async (req, res) => {
+
         const { id } = req
+
         try {
-            const userStripeInfo = await striptModel.findOne({ code: activeCode })
-            if (userStripeInfo) {
-                await sellerModel.findByIdAndUpdate(id, {
-                    payment: 'active'
-                })
-                responseReturn(res, 200, { message: 'payment active' })
-            } else {
-                responseReturn(res, 404, { message: 'payment active failed' })
-            }
+
+            await sellerModel.findByIdAndUpdate(id, {
+                payment: 'active'
+            })
+
+            responseReturn(res, 200, { message: 'Payment activated' })
+
         } catch (error) {
-            responseReturn(res, 500, { message: 'Internal server error' })
+            responseReturn(res, 500, { message: 'Activation failed' })
         }
     }
 
-    sunAmount = (data) => {
-        let sum = 0;
+    /* ------------------------------------------------ */
+    /* GET SELLER WALLET DETAILS */
+    /* ------------------------------------------------ */
+    get_seller_payment_details = async (req, res) => {
 
-        for (let i = 0; i < data.length; i++) {
-            sum = sum + data[i].amount
-        }
-        return sum
-    }
-
-    get_seller_payemt_details = async (req, res) => {
         const { sellerId } = req.params
 
         try {
+
             const payments = await sellerWallet.find({ sellerId })
 
-            const pendingWithdrows = await withdrowRequest.find({
-                $and: [
-                    {
-                        sellerId: {
-                            $eq: sellerId
-                        }
-                    }, {
-                        status: {
-                            $eq: 'pending'
-                        }
-                    }
-                ]
+            const pendingWithdraws = await withdrowRequest.find({
+                sellerId,
+                status: 'pending'
             })
 
-            const successWithdrows = await withdrowRequest.find({
-                $and: [
-                    {
-                        sellerId: {
-                            $eq: sellerId
-                        }
-                    }, {
-                        status: {
-                            $eq: 'success'
-                        }
-                    }
-                ]
+            const successWithdraws = await withdrowRequest.find({
+                sellerId,
+                status: 'success'
             })
 
-            const pendingAmount = this.sunAmount(pendingWithdrows)
-            const withdrowAmount = this.sunAmount(successWithdrows)
-            const totalAmount = this.sunAmount(payments)
+            const totalAmount = payments.reduce((a, b) => a + b.amount, 0)
+            const pendingAmount = pendingWithdraws.reduce((a, b) => a + b.amount, 0)
+            const withdrawAmount = successWithdraws.reduce((a, b) => a + b.amount, 0)
 
-            let availableAmount = 0;
+            const availableAmount =
+                totalAmount - (pendingAmount + withdrawAmount)
 
-            if (totalAmount > 0) {
-                availableAmount = totalAmount - (pendingAmount + withdrowAmount)
-            }
             responseReturn(res, 200, {
                 totalAmount,
                 pendingAmount,
-                withdrowAmount,
+                withdrawAmount,
                 availableAmount,
-                successWithdrows,
-                pendingWithdrows
+                successWithdraws,
+                pendingWithdraws
             })
 
         } catch (error) {
-            console.log(error.message)
+            responseReturn(res, 500, { message: 'Internal server error' })
         }
     }
 
-    withdrowal_request = async (req, res) => {
+    /* ------------------------------------------------ */
+    /* SELLER WITHDRAW REQUEST */
+    /* ------------------------------------------------ */
+    withdraw_request = async (req, res) => {
+
         const { amount, sellerId } = req.body
 
         try {
-            const withdrowal = await withdrowRequest.create({
+
+            const request = await withdrowRequest.create({
                 sellerId,
-                amount: parseInt(amount)
+                amount: parseInt(amount),
+                status: 'pending'
             })
-            responseReturn(res, 200, { withdrowal, message: 'withdrowal request send' })
+
+            responseReturn(res, 200, {
+                request,
+                message: 'Withdraw request submitted'
+            })
+
         } catch (error) {
-            responseReturn(res, 500, { message: 'Internal server error' })
+            responseReturn(res, 500, { message: 'Withdraw failed' })
         }
     }
 
-    get_payment_request = async (req, res) => {
+    /* ------------------------------------------------ */
+    /* ADMIN GET PENDING REQUESTS */
+    /* ------------------------------------------------ */
+    get_payment_requests = async (req, res) => {
 
         try {
-            const withdrowalRequest = await withdrowRequest.find({ status: 'pending' })
-            responseReturn(res, 200, { withdrowalRequest })
+
+            const requests = await withdrowRequest.find({ status: 'pending' })
+
+            responseReturn(res, 200, { requests })
+
         } catch (error) {
             responseReturn(res, 500, { message: 'Internal server error' })
         }
     }
 
+    /* ------------------------------------------------ */
+    /* ADMIN CONFIRM WITHDRAW (TRANSFER TO SELLER) */
+    /* ------------------------------------------------ */
     payment_request_confirm = async (req, res) => {
+
         const { paymentId } = req.body
 
         try {
+
             const payment = await withdrowRequest.findById(paymentId)
-            const { stripeId } = await striptModel.findOne({
+
+            if (!payment) {
+                return responseReturn(res, 404, { message: 'Request not found' })
+            }
+
+            const sellerAccount = await paymentAccountModel.findOne({
                 sellerId: new ObjectId(payment.sellerId)
             })
 
-            await stripe.transfers.create({
+            if (!sellerAccount) {
+                return responseReturn(res, 404, { message: 'Seller account not found' })
+            }
+
+            await razorpay.transfers.create({
+                account: sellerAccount.razorpayAccountId,
                 amount: payment.amount * 100,
-                currency: 'usd',
-                destination: stripeId
+                currency: "INR",
+                notes: { reason: "Seller withdrawal" }
             })
-            await withdrowRequest.findByIdAndUpdate(paymentId, { status: 'success' })
-            responseReturn(res, 200, { payment, message: 'request confirm success' })
+
+            await withdrowRequest.findByIdAndUpdate(paymentId, {
+                status: 'success'
+            })
+
+            responseReturn(res, 200, {
+                message: 'Withdrawal successful'
+            })
+
         } catch (error) {
             console.log(error)
-            responseReturn(res, 500, { message: 'Internal server error' })
+            responseReturn(res, 500, { message: 'Transfer failed' })
         }
-
     }
+
 }
 
 module.exports = new paymentController()

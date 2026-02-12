@@ -144,6 +144,13 @@ io.on('connection', (soc) => {
 app.use(bodyParser.json())
 app.use(cookieParser())
 
+app.use(
+    express.json({
+        verify: function (req, res, buf) {
+            req.rawBody = buf
+        }
+    })
+)
 
 app.use('/api', require('./routes/chatRoutes'))
 

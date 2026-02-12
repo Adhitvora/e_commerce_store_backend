@@ -1,13 +1,24 @@
 const router = require('express').Router()
 const orderController = require('../../controllers/order/orderController')
+const { authMiddleware } = require('../../middlewares/authMiddleware')
 
 // ---- customer
 router.post('/home/order/palce-order', orderController.place_order)
 router.get('/home/customer/gat-dashboard-data/:userId', orderController.get_customer_databorad_data)
 router.get('/home/customer/gat-orders/:customerId/:status', orderController.get_orders)
 router.get('/home/customer/gat-order/:orderId', orderController.get_order)
-router.post('/order/create-payment', orderController.create_payment)
+router.get(
+    '/order/get-order/:orderId',
+    authMiddleware,
+    orderController.get_order
+)
+
+// router.post('/order/create-payment', orderController.create_payment)
 router.get('/order/confirm/:orderId', orderController.order_confirm)
+router.post('/home/order/place-order', authMiddleware, orderController.place_order)
+router.put('/order/confirm/:orderId', authMiddleware, orderController.order_confirm)
+router.post('/api/order/webhook', orderController.order_confirm)
+
 
 // --- admin
 router.get('/admin/orders', orderController.get_admin_orders)

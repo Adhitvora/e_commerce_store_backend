@@ -1,19 +1,14 @@
 const { Schema, model } = require('mongoose')
 
-const stripeSchema = new Schema({
+const paymentAccountSchema = new Schema({
     sellerId: {
         type: Schema.ObjectId,
         required: true
     },
-    stripeId: {
-        type: String,
-        required: true
-    },
-    code: {
+    razorpayAccountId: {
         type: String,
         required: true
     }
 }, { timestamps: true })
 
-
-module.exports = model('stripes', stripeSchema)
+module.exports = model('paymentAccounts', paymentAccountSchema)

@@ -1,34 +1,71 @@
+
 const { Schema, model } = require('mongoose')
 
-const customerOrder = new Schema({
-    customerId : {
-        type : Schema.ObjectId,
-        required : true
-    },
-    products : {
-        type : Array,
-        required : true
-    },
-    price : {
-        type : Number,
-        required : true
-    },
-    payment_status : {
-        type : String,
-        required : true
-    },
-    shippingInfo : {
-        type : Object,
-        required : true
-    },
-    delivery_status : {
-        type : String,
-        required : true
-    },
-    date : {
-        type : String,
-        required : true
-    },
-},{timestamps : true})
+const customerOrderSchema = new Schema({
 
-module.exports = model('customerOrders',customerOrder)
+    customerId: {
+        type: Schema.ObjectId,
+        required: true
+    },
+
+    products: {
+        type: Array,
+        required: true
+    },
+
+    price: {
+        type: Number,
+        required: true
+    },
+
+    shippingInfo: {
+        type: Object,
+        required: true
+    },
+
+    payment_type: {
+        type: String,
+        enum: ['online', 'cod'],
+        required: true
+    },
+
+    payment_status: {
+        type: String,
+        enum: ['pending', 'paid', 'cod', 'failed', 'refunded'],
+        default: 'pending'
+    },
+
+    razorpay_order_id: {
+        type: String,
+        default: null
+    },
+    razorpay_payment_id: {
+        type: String,
+        default: null
+    },
+
+
+
+    delivery_status: {
+        type: String,
+        enum: ['pending', 'shipped', 'delivered', 'cancelled'],
+        default: 'pending'
+    },
+
+
+
+    commission_percent: {
+        type: Number,
+        default: 10
+    },
+
+
+    date: {
+        type: String,
+        required: true
+    }
+
+}, { timestamps: true })
+
+
+module.exports = model('customerOrders', customerOrderSchema)
