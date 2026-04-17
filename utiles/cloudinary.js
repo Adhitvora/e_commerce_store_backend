@@ -25,8 +25,28 @@ const uploadManyToCloudinary = async (files = [], folder) => {
     return Promise.all(files.map((file) => uploadToCloudinary(file.filepath, folder)))
 }
 
+const getCloudinaryPublicId = (url = '') => {
+    if (!url) return null
+
+    const parts = String(url).split('/')
+    const uploadIndex = parts.findIndex((part) => part === 'upload')
+
+    if (uploadIndex === -1) return null
+
+    let publicIdParts = parts.slice(uploadIndex + 1)
+
+    if (publicIdParts[0] && publicIdParts[0].startsWith('v')) {
+        publicIdParts = publicIdParts.slice(1)
+    }
+
+    if (!publicIdParts.length) return null
+
+    return publicIdParts.join('/').replace(/\.[^/.]+$/, '')
+}
+
 module.exports = {
     configureCloudinary,
+    getCloudinaryPublicId,
     uploadToCloudinary,
     uploadManyToCloudinary
 }

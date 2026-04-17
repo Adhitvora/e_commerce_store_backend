@@ -1,10 +1,18 @@
 const formidable = require('formidable')
-const cloudinary = require('cloudinary').v2
 const productModel = require('../../models/productModel');
 const sellerModel = require('../../models/sellerModel')
 const { responseReturn } = require('../../utiles/response');
 const authOrderModel = require('../../models/authOrder');
 const { getActiveSellers } = require('../../utiles/activeSellerFilter');
+const {
+    configureCloudinary,
+    getCloudinaryPublicId
+} = require('../../utiles/cloudinary')
+const {
+    DEFAULT_PRODUCT_IMAGE_BACKGROUND,
+    uploadNormalizedProductImage,
+    uploadNormalizedProductImages
+} = require('../../utiles/productImage')
 
 class productController {
 
@@ -13,7 +21,11 @@ class productController {
         const form = formidable({ multiples: true })
 
         form.parse(req, async (err, field, files) => {
-            let { name, category, description, stock, price, discount, shopName, brand } = field;
+            if (err) {
+                return responseReturn(res, 400, { error: 'We could not read the uploaded files. Please try again.' })
+            }
+
+            let { name, category, description, stock, price, discount, shopName, brand, imageBackground } = field;
             let { images } = files;
             name = name.trim()
             name = name.replace(/[^a-zA-Z0-9\s._-]/g, '')
@@ -32,20 +44,12 @@ class productController {
                 return responseReturn(res, 400, { error: 'Please upload at least one product image.' })
             }
 
-            cloudinary.config({
-                cloud_name: process.env.CLOUD_NAME,
-                api_key: process.env.API_KEY,
-                api_secret: process.env.API_SECRET,
-                secure: true
-            })
-
             try {
-                let allImageUrl = [];
-
-                for (let i = 0; i < images.length; i++) {
-                    const result = await cloudinary.uploader.upload(images[i].filepath, { folder: 'products' })
-                    allImageUrl = [...allImageUrl, result.secure_url]
-                }
+                const uploadedImages = await uploadNormalizedProductImages(
+                    images,
+                    imageBackground || DEFAULT_PRODUCT_IMAGE_BACKGROUND
+                )
+                const allImageUrl = uploadedImages.map((image) => image.secure_url)
 
                 await productModel.create({
                     sellerId: id,
@@ -64,7 +68,9 @@ class productController {
                 })
                 responseReturn(res, 201, { message: "product add success" })
             } catch (error) {
-                responseReturn(res, 500, { error: 'Something went wrong. Please try again later.' })
+                responseReturn(res, error.statusCode || 500, {
+                    error: error.message || 'Something went wrong. Please try again later.'
+                })
             }
 
         })
@@ -84,17 +90,14 @@ class productController {
             }
 
             // cloudinary config
-            cloudinary.config({
-                cloud_name: process.env.CLOUD_NAME,
-                api_key: process.env.API_KEY,
-                api_secret: process.env.API_SECRET,
-                secure: true
-            })
+            const cloudinary = configureCloudinary()
 
             // delete images from cloudinary
             for (let img of product.images) {
-                const publicId = img.split('/').pop().split('.')[0];
-                await cloudinary.uploader.destroy(`products/${publicId}`);
+                const publicId = getCloudinaryPublicId(img)
+                if (publicId) {
+                    await cloudinary.uploader.destroy(publicId)
+                }
             }
 
             // delete product from DB
@@ -178,7 +181,7 @@ class productController {
         const form = formidable({ multiples: true })
 
         form.parse(req, async (err, field, files) => {
-            const { productId, oldImage } = field;
+            const { productId, oldImage, imageBackground } = field;
             const { newImage } = files
 
             if (err) {
@@ -199,13 +202,15 @@ class productController {
                         return responseReturn(res, 400, { error: 'This approved product cannot be edited by the seller.' })
                     }
 
-                    cloudinary.config({
-                        cloud_name: process.env.CLOUD_NAME,
-                        api_key: process.env.API_KEY,
-                        api_secret: process.env.API_SECRET,
-                        secure: true
-                    })
-                    const result = await cloudinary.uploader.upload(newImage.filepath, { folder: 'products' })
+                    if (!newImage) {
+                        return responseReturn(res, 400, { error: 'Please upload a new image.' })
+                    }
+
+                    const cloudinary = configureCloudinary()
+                    const result = await uploadNormalizedProductImage(
+                        newImage,
+                        imageBackground || DEFAULT_PRODUCT_IMAGE_BACKGROUND
+                    )
 
                     if (result) {
                         let { images } = product
@@ -214,10 +219,15 @@ class productController {
                             return responseReturn(res, 400, { error: 'The selected image was not found for this product.' })
                         }
                         images[index] = result.secure_url;
+                        const oldImagePublicId = getCloudinaryPublicId(oldImage)
 
                         await productModel.findByIdAndUpdate(productId, {
                             images
                         })
+
+                        if (oldImagePublicId) {
+                            await cloudinary.uploader.destroy(oldImagePublicId).catch(() => { })
+                        }
 
                         const updatedProduct = await productModel.findById(productId)
                         responseReturn(res, 200, { product: updatedProduct, message: 'product image update success' })
@@ -225,7 +235,9 @@ class productController {
                         responseReturn(res, 404, { error: 'We could not upload the image. Please try again.' })
                     }
                 } catch (error) {
-                    responseReturn(res, 404, { error: 'We could not update the product image. Please try again.' })
+                    responseReturn(res, error.statusCode || 500, {
+                        error: error.message || 'We could not update the product image. Please try again.'
+                    })
                 }
             }
         })
